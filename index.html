@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 담임 출결 관리 시스템</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        
+        /* Print Styles */
+        @media print {
+            @page { size: A4 landscape; margin: 10mm; }
+            body { background-color: white !important; }
+            .no-print { display: none !important; }
+            .print-area { padding: 0 !important; margin: 0 !important; border: none !important; box-shadow: none !important; width: 100% !important; display: block !important; }
+            .print-header-container { display: flex !important; justify-content: space-between !important; align-items: flex-start !important; margin-bottom: 20px !important; width: 100% !important; }
+            .approval-table { width: auto !important; border-collapse: collapse !important; table-layout: fixed !important; }
+            .approval-table th, .approval-table td { border: 1px solid black !important; padding: 2px !important; font-size: 11px !important; text-align: center !important; vertical-align: middle !important; }
+            .approval-table .label-col { width: 30px !important; background-color: #f8f9fa !important; }
+            .approval-table .stamp-col { width: 85px !important; }
+            .approval-table .stamp-area { height: 65px !important; }
+            table.main-table { border-collapse: collapse !important; width: 100% !important; table-layout: fixed !important; font-size: 10px !important; }
+            table.main-table th, table.main-table td { border: 1px solid black !important; padding: 4px 2px !important; text-align: center !important; word-break: keep-all !important; }
+            .period-cell { white-space: nowrap !important; overflow: visible !important; text-overflow: clip !important; width: 32% !important; font-size: 9px !important; }
+        }
+
+        .scroll-hide::-webkit-scrollbar { display: none; }
+        .tab-active { color: #2563eb; border-bottom: 2px solid #2563eb; background-color: #eff6ff; }
+        .selected-student-active { background-color: #dbeafe; border-color: #3b82f6; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+    <div id="app" class="min-h-screen flex flex-col">
+        <header class="bg-white border-b sticky top-0 z-20 no-print">
+            <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <div class="bg-blue-600 p-2 rounded-lg text-white">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </div>
+                    <h1 class="text-xl font-bold">스마트 학급 출결 관리 프로그램</h1>
+                </div>
+                <div class="flex items-center gap-4 text-sm">
+                    <div class="flex items-center gap-1">
+                        <input type="text" id="gradeNum" oninput="saveGradeInfo('grade', this.value)" placeholder="학년" class="border-b focus:border-blue-500 outline-none font-bold w-10 text-center">
+                        <span>학년</span>
+                        <input type="text" id="classNum" oninput="saveGradeInfo('class', this.value)" placeholder="반" class="border-b focus:border-blue-500 outline-none font-bold w-10 text-center">
+                        <span>반</span>
+                    </div>
+                    <div class="flex flex-col items-end gap-0.5">
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500">담임교사 성함 입력:</span>
+                            <input type="text" id="teacherName" oninput="saveTeacherName(this.value)" placeholder="이름 입력" class="border-b focus:border-blue-500 outline-none font-bold w-24">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <nav class="max-w-7xl mx-auto px-4 flex border-t overflow-x-auto scroll-hide">
+                <button onclick="switchTab('daily')" class="tab-btn px-6 py-3 font-medium text-gray-500 transition" id="tab-daily">일일출결관리</button>
+                <button onclick="switchTab('monthly')" class="tab-btn px-6 py-3 font-medium text-gray-500 transition" id="tab-monthly">월출결관리</button>
+                <button onclick="switchTab('neis')" class="tab-btn px-6 py-3 font-medium text-gray-500 transition" id="tab-neis">나이스복붙용</button>
+                <button onclick="switchTab('stats')" class="tab-btn px-6 py-3 font-medium text-gray-500 transition" id="tab-stats">누적관리</button>
+                <button onclick="switchTab('data')" class="tab-btn px-6 py-3 font-medium text-gray-500 transition" id="tab-data">데이터 및 시간표 설정</button>
+            </nav>
+        </header>
+
+        <main class="max-w-[1200px] mx-auto px-4 py-8 flex-1 w-full">
+            <!-- 일일출결관리 -->
+            <div id="content-daily" class="tab-content space-y-6">
+                <div class="flex flex-wrap items-center justify-between bg-white p-5 rounded-xl shadow-sm border gap-4">
+                    <div class="flex items-center gap-4">
+                        <label class="font-bold text-gray-700">날짜 선택:</label>
+                        <input type="date" id="selectedDate" onchange="renderDaily()" class="border rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-medium">
+                    </div>
+                    <h2 id="dailyTitle" class="text-xl font-black text-blue-800"></h2>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <div class="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col h-[700px]">
+                        <div class="p-4 border-b bg-gray-50 font-bold flex justify-between items-center h-14">
+                            <div class="flex flex-col">
+                                <span class="text-sm">학생 명단</span>
+                                <span id="studentCount" class="text-[10px] font-normal text-gray-500">0명</span>
+                            </div>
+                            <div id="selectionArea" class="hidden">
+                                <button onclick="confirmAddEntry()" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 transition shadow-sm animate-pulse">
+                                    <span id="selectedStudentName"></span> 추가 +
+                                </button>
+                            </div>
+                        </div>
+                        <div id="studentSidebar" class="flex-1 overflow-y-auto"></div>
+                    </div>
+                    <div id="dailyEntries" class="lg:col-span-3 space-y-4"></div>
+                </div>
+            </div>
+
+            <!-- 월출결관리 -->
+            <div id="content-monthly" class="tab-content hidden space-y-6">
+                <div class="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border no-print">
+                    <div class="flex items-center gap-4">
+                        <label class="font-bold">월 선택:</label>
+                        <input type="month" id="currentMonth" onchange="renderMonthly()" class="border rounded-lg px-3 py-2">
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="window.print()" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2 transition shadow-md">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                            출력하기 (A4 가로)
+                        </button>
+                    </div>
+                </div>
+
+                <div id="print-area" class="bg-white p-8 border shadow-lg print-area mx-auto">
+                    <div class="print-header-container flex justify-between items-start mb-6 w-full">
+                        <div class="flex-1 pt-3">
+                            <h2 id="reportTitle" class="text-2xl font-black underline underline-offset-8"></h2>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            <div class="text-[11px] font-bold mb-1 mr-1">
+                                작성자: 담임 <span id="printTeacherName"></span>
+                            </div>
+                            <table class="approval-table border-collapse border border-black text-center">
+                                <thead>
+                                    <tr>
+                                        <th rowspan="2" class="label-col border border-black p-1 text-[10px] bg-gray-50">결<br>재</th>
+                                        <th class="stamp-col border border-black p-1 text-[10px] bg-gray-50 font-bold">담임교사</th>
+                                        <th class="stamp-col border border-black p-1 text-[10px] bg-gray-50 font-bold">담당자</th>
+                                        <th class="stamp-col border border-black p-1 text-[10px] bg-gray-50 font-bold">학년부장</th>
+                                    </tr>
+                                    <tr class="stamp-area">
+                                        <td class="border border-black"></td>
+                                        <td class="border border-black"></td>
+                                        <td class="border border-black"></td>
+                                    </tr>
+                                </thead>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="w-full">
+                <table class="main-table w-full border-collapse border border-black text-center">
+                    <thead class="bg-gray-50">
+                        <tr class="text-[10px]">
+                            <th class="border border-black p-1 w-[4%]">번호</th>
+                            <th class="border border-black p-1 w-[8%]">성명</th>
+                            <th class="border border-black p-1 w-[7%]">날짜</th>
+                            <th class="border border-black p-1 w-[10%]">출결구분</th>
+                            <th class="border border-black p-1 w-[32%]">교시</th>
+                            <th class="border border-black p-1 w-[12%]">상세 사유</th>
+                            <th class="border border-black p-1 w-[7%]">방법</th>
+                            <th class="border border-black p-1 w-[11%]">증빙서류</th>
+                            <th class="border border-black p-1 w-[4%]">제출</th>
+                            <th class="border border-black p-1 w-[5%]">확인</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monthlyTableBody" class="text-[10px]"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 나이스복붙용 -->
+    <div id="content-neis" class="tab-content hidden space-y-6">
+        <div class="flex flex-wrap items-center justify-between bg-white p-4 rounded-xl shadow-sm border no-print gap-4">
+            <div class="flex items-center gap-4">
+                <label class="font-bold text-gray-700">조회 방식:</label>
+                <select id="neisFilterType" onchange="toggleNeisFilter(); renderNeis()" class="border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm">
+                    <option value="date" selected>일별 조회</option>
+                    <option value="month">월별 조회</option>
+                </select>
+                <div id="neisMonthWrapper" class="hidden">
+                    <input type="month" id="neisMonth" onchange="renderNeis()" class="border rounded-lg px-3 py-2">
+                </div>
+                <div id="neisDateWrapper" class="flex items-center gap-1">
+                    <button type="button" onclick="shiftNeisDate(-1)" class="border rounded-lg w-9 h-9 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-100 transition" aria-label="하루 전">−</button>
+                    <input type="date" id="neisDate" onchange="renderNeis()" class="border rounded-lg px-3 py-2">
+                    <button type="button" onclick="shiftNeisDate(1)" class="border rounded-lg w-9 h-9 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-100 transition" aria-label="하루 후">+</button>
+                </div>
+            </div>
+        </div>
+        <div id="neisContainer" class="bg-white p-8 border shadow-sm mx-auto rounded-xl space-y-6">
+            <div class="text-center py-10 text-gray-400 font-medium">조회할 기간을 선택하면 데이터가 나타납니다.</div>
+        </div>
+    </div>
+
+    <!-- 누적관리 -->
+    <div id="content-stats" class="tab-content hidden space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <!-- 왼쪽 사이드바: 학생 선택 -->
+                    <div class="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col h-[700px]">
+                        <div class="p-4 border-b bg-gray-50 font-bold h-14 flex items-center justify-between">
+                            <span>학생별 누적 조회</span>
+                            <button onclick="renderAllStats()" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition">전체 누적 보기</button>
+                        </div>
+                        <div id="statsStudentSidebar" class="flex-1 overflow-y-auto"></div>
+                    </div>
+                    <!-- 오른쪽: 상세 누적 데이터 -->
+                    <div class="lg:col-span-3 space-y-6">
+                        <div id="statsHeader" class="bg-white p-6 rounded-xl shadow-sm border">
+                            <h3 id="statsTitle" class="text-xl font-black text-blue-900 mb-4">학생을 선택하거나 전체 누적 보기를 클릭하세요.</h3>
+                            <div id="statsSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-4"></div>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+                            <table class="w-full border-collapse text-sm">
+                                <thead class="bg-gray-50 border-b">
+                                    <tr>
+                                        <th class="px-4 py-3 font-bold text-gray-700 w-16">번호</th>
+                                        <th class="px-4 py-3 font-bold text-gray-700 w-24">이름</th>
+                                        <th class="px-4 py-3 font-bold text-gray-700 w-32">날짜</th>
+                                        <th class="px-4 py-3 font-bold text-gray-700 w-32">구분</th>
+                                        <th class="px-4 py-3 font-bold text-gray-700">상세 사유</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="statsTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 데이터 및 시간표 설정 -->
+            <div id="content-data" class="tab-content hidden space-y-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border space-y-4">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-bold flex items-center gap-2">📅 학기별 수업 시간표 설정</h3>
+                            <button onclick="saveScheduleDirectly()" class="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700 transition shadow-sm">
+                                시간표 저장하기
+                            </button>
+                        </div>
+                        <div class="flex gap-2 p-1 bg-gray-100 rounded-lg">
+                            <button onclick="toggleSemester(1)" id="semBtn-1" class="flex-1 py-2 rounded-md font-bold text-sm transition">1학기</button>
+                            <button onclick="toggleSemester(2)" id="semBtn-2" class="flex-1 py-2 rounded-md font-bold text-sm transition">2학기</button>
+                        </div>
+                        <div class="p-4 bg-blue-50 rounded-lg border border-blue-100 space-y-3">
+                            <label class="text-sm font-bold text-blue-800 flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                학기 운영 월 선택
+                            </label>
+                            <div class="flex flex-wrap gap-2" id="semesterMonths"></div>
+                        </div>
+                        <div class="space-y-3" id="scheduleSettings"></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border space-y-4">
+                        <h3 class="text-lg font-bold flex items-center gap-2">📂 명렬표 업로드 및 백업</h3>
+                        <div class="bg-blue-50 border-l-4 border-blue-400 p-3 mb-4">
+                            <p class="text-xs text-blue-800 leading-relaxed">
+                                <span class="font-bold">🛡️ 개인정보 보호 안내:</span> 모든 데이터는 로컬PC 브라우저에만 저장됩니다.<br>
+                                <span class="font-bold">⚠️ 기기 변경/포맷 시 반드시 백업 후 복구하세요.</span>
+                            </p>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="block">
+                                <input type="file" id="excelInput" accept=".xlsx, .xls, .csv" class="block w-full text-sm text-slate-500
+                                    file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0
+                                    file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700
+                                    hover:file:bg-blue-100 cursor-pointer">
+                            </label>
+                            <p class="text-[11px] text-gray-500 font-medium px-1">
+                                📍 명렬표 추출: [나이스]-[학급담임]-[기본학적관리]-[명렬표출력]-[엑셀 저장]<br>
+                                <span class="text-blue-600 font-bold">⚠️ 나이스 엑셀 업로드 시 학년/반이 자동으로 등록됩니다.(담임교사 이름은 수동 입력)</span>
+                            </p>
+                        </div>
+                        <div class="flex gap-2 pt-4 border-t">
+                            <button onclick="backupData()" class="flex-1 bg-gray-100 py-3 rounded-lg font-bold hover:bg-gray-200 transition">백업</button>
+                            <button onclick="document.getElementById('restoreInput').click()" class="flex-1 bg-gray-100 py-3 rounded-lg font-bold hover:bg-gray-200 transition">복구</button>
+                            <input type="file" id="restoreInput" class="hidden" onchange="restoreData(this)">
+                        </div>
+                        <button onclick="resetData()" class="w-full bg-red-50 text-red-600 py-3 rounded-lg font-bold border border-red-100 hover:bg-red-100 transition">데이터 초기화</button>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-sm border space-y-4">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <h3 class="text-lg font-bold flex items-center gap-2">🔄 여러 기기 동기화 (Google Sheets)</h3>
+                        <span id="syncStatusBadge" class="text-xs font-bold px-2 py-1 rounded-full bg-gray-100 text-gray-500">미설정</span>
+                    </div>
+                    <p class="text-xs text-gray-500 leading-relaxed">
+                        Google Apps Script 웹앱 주소와 동기화 코드를 입력하면, 여러 기기에서 같은 학급 데이터를 불러오고 저장할 수 있습니다.
+                        (기기별로 URL과 코드를 <span class="font-bold">동일하게</span> 입력해야 합니다.)
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label class="block text-sm">
+                            <span class="text-xs font-bold text-gray-500 block mb-1">Apps Script 웹앱 URL</span>
+                            <input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/.../exec" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        </label>
+                        <label class="block text-sm">
+                            <span class="text-xs font-bold text-gray-500 block mb-1">동기화 코드 (예: 2학년5반)</span>
+                            <input type="text" id="syncCode" placeholder="같은 코드를 쓰는 기기끼리 데이터 공유" class="w-full border rounded-lg px-3 py-2 text-sm">
+                        </label>
+                    </div>
+                    <label class="flex items-center gap-2 text-sm font-medium text-gray-600">
+                        <input type="checkbox" id="syncAuto" onchange="onSyncAutoToggle(this.checked)" class="w-4 h-4">
+                        변경할 때마다 자동으로 동기화
+                    </label>
+                    <div class="flex flex-wrap gap-2 pt-2 border-t">
+                        <button onclick="saveSyncSettings()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition">설정 저장</button>
+                        <button onclick="syncPull(true)" class="bg-gray-100 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 transition">지금 불러오기</button>
+                        <button onclick="syncPush(true)" class="bg-gray-100 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 transition">지금 올리기(백업)</button>
+                    </div>
+                    <p id="syncLastText" class="text-[11px] text-gray-400 font-medium"></p>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-sm border space-y-4">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <h3 class="text-lg font-bold">학생 명단 관리</h3>
+                        <button onclick="addStudent()" class="bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 transition font-medium">학생 직접 추가 +</button>
+                    </div>
+                    <div id="studentListContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="bg-white border-t py-8 no-print mt-auto">
+            <div class="max-w-7xl mx-auto px-4 text-center space-y-2 text-sm text-gray-600 font-medium">
+                만든 사람: 경기도 지구과학 교사 뀨짱, 
+                문의: <a href="https://open.kakao.com/o/s7hVU65h" target="_blank" class="text-blue-600 hover:underline">카카오톡 오픈채팅</a>, 
+                블로그: <a href="https://eduarchive.tistory.com/" target="_blank" class="underline underline-offset-4 decoration-blue-200 text-gray-800 font-bold">뀨짱쌤의 교육자료 아카이브</a>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const ALL_PERIODS = ['조회', '1교시', '2교시', '3교시', '4교시', '5교시', '6교시', '7교시', '8교시', '9교시', '종례'];
+        const TYPES = ['지각', '조퇴', '결석', '결과', '외출'];
+        const CATS = ['질병', '미인정', '출석인정', '기타'];
+        const REASONS = ['태만', '생리', '감기', '복통', '두통', '몸살', '현장체험학습'];
+        const CONTACTS = ['전화', '문자', '직접입력'];
+        const DOCS = ['진료확인서', '학부모확인서', '체험학습신청서 및 보고서', '의사진단서', '전염병 서류/문자', '약봉투', '처방전', '미인정 서류 없음', '직접입력'];
+        const DAYS_KR = ['일', '월', '화', '수', '목', '금', '토'];
+
+        // 로컬(내 PC) 기준 날짜/월 문자열 반환 - toISOString()은 UTC 기준이라
+        // 한국 시간 오전 9시 이전에는 날짜가 하루 전으로 표시되는 문제가 있어 이걸로 대체
+        function getLocalDateStr(d = new Date()) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+        function getLocalMonthStr(d = new Date()) {
+            return getLocalDateStr(d).slice(0, 7);
+        }
+
+        const REASON_DOC_MAP = {
+            '태만': '미인정 서류 없음',
+            '생리': '학부모확인서',
+            '현장체험학습': '체험학습신청서 및 보고서',
+            '감기': '진료확인서',
+            '복통': '진료확인서',
+            '두통': '진료확인서',
+            '몸살': '진료확인서'
+        };
+
+        // 조사 판별 함수 ('로'/'으로')
+        function getJosa(word) {
+            if (!word) return '로';
+            const lastChar = word.charCodeAt(word.length - 1);
+            if (lastChar < 0xAC00 || lastChar > 0xD7A3) return '로'; 
+            const jongseong = (lastChar - 0xAC00) % 28;
+            return (jongseong === 0 || jongseong === 8) ? '로' : '으로';
+        }
+
+        function getInitialState() {
+            let students = JSON.parse(localStorage.getItem('att_students') || '[]');
+            let attendance = JSON.parse(localStorage.getItem('att_attendance') || '[]');
+            let teacherName = localStorage.getItem('att_teacher') || '';
+            let grade = localStorage.getItem('att_grade') || '';
+            let classNum = localStorage.getItem('att_class') || '';
+            let schedule = JSON.parse(localStorage.getItem('att_schedule')) || { "1": { "1": 7, "2": 7, "3": 7, "4": 7, "5": 7 }, "2": { "1": 7, "2": 7, "3": 7, "4": 7, "5": 7 } };
+            let semMonths = JSON.parse(localStorage.getItem('att_sem_months')) || { "1": [3, 4, 5, 6, 7], "2": [8, 9, 10, 11, 12, 1, 2] };
+            return { students, attendance, teacherName, grade, class: classNum, schedule, semMonths };
+        }
+
+        let state = getInitialState();
+        let currentEditingSemester = 1;
+        let selectedStudentIdForEntry = null;
+        let selectedStudentIdForStats = null;
+
+        function persistToLocalStorage() {
+            localStorage.setItem('att_students', JSON.stringify(state.students));
+            localStorage.setItem('att_attendance', JSON.stringify(state.attendance));
+            localStorage.setItem('att_teacher', state.teacherName || '');
+            localStorage.setItem('att_grade', state.grade || '');
+            localStorage.setItem('att_class', state.class || '');
+            localStorage.setItem('att_schedule', JSON.stringify(state.schedule));
+            localStorage.setItem('att_sem_months', JSON.stringify(state.semMonths));
+        }
+
+        function save() {
+            persistToLocalStorage();
+            updateTeacherUI();
+            // 여러 기기 동기화: 로컬 변경 시각을 기록하고, 자동 동기화가 켜져 있으면 잠시 후 서버에 올림
+            lastLocalUpdate = Date.now();
+            localStorage.setItem('att_updated_at', String(lastLocalUpdate));
+            if (syncConfig.auto && syncConfig.url && syncConfig.code) queueSyncPush();
+        }
+
+        // ====== 여러 기기 동기화 (Google Sheets + Apps Script) ======
+        // 기본 웹앱 URL: 아래 값을 미리 넣어두면 기기마다 URL을 새로 입력할 필요 없이
+        // "동기화 코드"만 입력하고 [설정 저장]을 누르면 됩니다.
+        const DEFAULT_SYNC_URL = 'https://script.google.com/macros/s/AKfycby5Hd0pDW3Pd-rERQgBc9sEErbCMdPcQrQ4n4b8MpfB2UFs7fAYw0PGW1TEBYcSOdFI7Q/exec';
+        let syncConfig = {
+            url: localStorage.getItem('att_sync_url') || DEFAULT_SYNC_URL,
+            code: localStorage.getItem('att_sync_code') || '',
+            auto: localStorage.getItem('att_sync_auto') === '1'
+        };
+        let lastLocalUpdate = parseInt(localStorage.getItem('att_updated_at') || '0', 10);
+        let syncPushTimer = null;
+        let syncInProgress = false;
+
+        function updateSyncStatusUI(status) {
+            const badge = document.getElementById('syncStatusBadge');
+            const lastText = document.getElementById('syncLastText');
+            if (!badge) return;
+            const map = {
+                off: ['미설정', 'bg-gray-100 text-gray-500'],
+                ready: ['연결됨', 'bg-blue-50 text-blue-600'],
+                syncing: ['동기화 중...', 'bg-yellow-50 text-yellow-700'],
+                ok: ['동기화됨', 'bg-green-50 text-green-700'],
+                error: ['오류', 'bg-red-50 text-red-600']
+            };
+            const [label, cls] = map[status] || map.off;
+            badge.textContent = label;
+            badge.className = `text-xs font-bold px-2 py-1 rounded-full ${cls}`;
+            if (lastText) {
+                const t = parseInt(localStorage.getItem('att_sync_last') || '0', 10);
+                lastText.textContent = t ? `마지막 동기화: ${new Date(t).toLocaleString('ko-KR')}` : '';
+            }
+        }
+
+        function fillSyncSettingsUI() {
+            const urlEl = document.getElementById('syncUrl');
+            const codeEl = document.getElementById('syncCode');
+            const autoEl = document.getElementById('syncAuto');
+            if (urlEl) urlEl.value = syncConfig.url;
+            if (codeEl) codeEl.value = syncConfig.code;
+            if (autoEl) autoEl.checked = syncConfig.auto;
+            updateSyncStatusUI(syncConfig.url && syncConfig.code ? 'ready' : 'off');
+        }
+
+        function saveSyncSettings() {
+            const url = document.getElementById('syncUrl').value.trim();
+            const code = document.getElementById('syncCode').value.trim();
+            if (!url || !code) { showToast('웹앱 URL과 동기화 코드를 모두 입력해주세요.'); return; }
+            syncConfig.url = url;
+            syncConfig.code = code;
+            localStorage.setItem('att_sync_url', url);
+            localStorage.setItem('att_sync_code', code);
+            showToast('동기화 설정이 저장되었습니다.');
+            updateSyncStatusUI('ready');
+            syncPull(true);
+        }
+
+        function onSyncAutoToggle(checked) {
+            syncConfig.auto = checked;
+            localStorage.setItem('att_sync_auto', checked ? '1' : '0');
+            if (checked && syncConfig.url && syncConfig.code) { showToast('자동 동기화가 켜졌습니다.'); syncPull(false); }
+        }
+
+        function queueSyncPush() {
+            if (syncPushTimer) clearTimeout(syncPushTimer);
+            syncPushTimer = setTimeout(() => syncPush(false), 1500);
+        }
+
+        function buildSyncPayload() {
+            return {
+                students: state.students,
+                attendance: state.attendance,
+                teacherName: state.teacherName,
+                grade: state.grade,
+                class: state.class,
+                schedule: state.schedule,
+                semMonths: state.semMonths
+            };
+        }
+
+        function applyRemoteData(remoteData, remoteUpdatedAt) {
+            state.students = remoteData.students || [];
+            state.attendance = remoteData.attendance || [];
+            state.teacherName = remoteData.teacherName || '';
+            state.grade = remoteData.grade || '';
+            state.class = remoteData.class || '';
+            state.schedule = remoteData.schedule || state.schedule;
+            state.semMonths = remoteData.semMonths || state.semMonths;
+            persistToLocalStorage();
+            lastLocalUpdate = remoteUpdatedAt || Date.now();
+            localStorage.setItem('att_updated_at', String(lastLocalUpdate));
+            refreshAllViews();
+        }
+
+        function refreshAllViews() {
+            try { updateTeacherUI(); } catch (e) {}
+            try { renderData(); } catch (e) {}
+            try { renderDaily(); } catch (e) {}
+            try { renderMonthly(); } catch (e) {}
+            try { if (document.getElementById('neisDate') && document.getElementById('neisDate').value) renderNeis(); } catch (e) {}
+            try { renderStats(); } catch (e) {}
+        }
+
+        async function syncPush(manual) {
+            if (!syncConfig.url || !syncConfig.code) { if (manual) showToast('먼저 동기화 설정을 저장해주세요.'); return; }
+            if (syncInProgress) return;
+            syncInProgress = true;
+            updateSyncStatusUI('syncing');
+            try {
+                const res = await fetch(syncConfig.url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // GAS 프리플라이트(OPTIONS) 회피용
+                    body: JSON.stringify({ action: 'push', code: syncConfig.code, updatedAt: lastLocalUpdate, data: buildSyncPayload() })
+                });
+                const json = await res.json();
+                if (json && json.ok) {
+                    localStorage.setItem('att_sync_last', String(Date.now()));
+                    updateSyncStatusUI('ok');
+                    if (manual) showToast('구글 시트로 저장했습니다.');
+                } else {
+                    throw new Error((json && json.error) || '알 수 없는 오류');
+                }
+            } catch (err) {
+                updateSyncStatusUI('error');
+                if (manual) showToast('동기화 저장 실패: ' + err.message);
+                console.error('syncPush error', err);
+            } finally {
+                syncInProgress = false;
+            }
+        }
+
+        async function syncPull(manual) {
+            if (!syncConfig.url || !syncConfig.code) { if (manual) showToast('먼저 동기화 설정을 저장해주세요.'); return; }
+            if (syncInProgress) return;
+            syncInProgress = true;
+            updateSyncStatusUI('syncing');
+            try {
+                const sep = syncConfig.url.includes('?') ? '&' : '?';
+                const res = await fetch(`${syncConfig.url}${sep}action=pull&code=${encodeURIComponent(syncConfig.code)}`);
+                const json = await res.json();
+                if (!json || json.ok === false) throw new Error((json && json.error) || '불러오기 실패');
+                localStorage.setItem('att_sync_last', String(Date.now()));
+                if (json.data && json.updatedAt && json.updatedAt > lastLocalUpdate) {
+                    applyRemoteData(json.data, json.updatedAt);
+                    updateSyncStatusUI('ok');
+                    showToast('다른 기기에서 저장된 최신 데이터를 불러왔습니다.');
+                } else {
+                    updateSyncStatusUI('ok');
+                    if (json.updatedAt && lastLocalUpdate > json.updatedAt) {
+                        syncPush(false); // 이 기기가 더 최신이면 서버에 맞춰 올려둠
+                        if (manual) showToast('이 기기의 데이터가 더 최신이라 서버에 올렸습니다.');
+                    } else if (manual) {
+                        showToast(json.updatedAt ? '이미 최신 상태입니다.' : '서버에 저장된 데이터가 아직 없습니다. "지금 올리기"를 눌러주세요.');
+                    }
+                }
+            } catch (err) {
+                updateSyncStatusUI('error');
+                if (manual) showToast('불러오기 실패: ' + err.message);
+                console.error('syncPull error', err);
+            } finally {
+                syncInProgress = false;
+            }
+        }
+
+        function initSync() {
+            fillSyncSettingsUI();
+            if (syncConfig.url && syncConfig.code) syncPull(false);
+            setInterval(() => {
+                if (syncConfig.auto && syncConfig.url && syncConfig.code && document.visibilityState === 'visible') syncPull(false);
+            }, 30000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && syncConfig.auto && syncConfig.url && syncConfig.code) syncPull(false);
+            });
+        }
+
+        function saveScheduleDirectly() { save(); showToast(`${currentEditingSemester}학기 시간표가 저장되었습니다.`); renderData(); }
+        function showToast(msg) {
+            const toast = document.createElement("div");
+            toast.className = "fixed bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg z-50 text-sm font-bold animate-bounce";
+            toast.innerText = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }
+
+        function saveTeacherName(val) { state.teacherName = val; save(); }
+        function saveGradeInfo(key, val) { state[key] = val; save(); renderMonthly(); }
+        
+        function updateTeacherUI() {
+            if(document.getElementById('teacherName')) document.getElementById('teacherName').value = state.teacherName || '';
+            if(document.getElementById('gradeNum')) document.getElementById('gradeNum').value = state.grade || '';
+            if(document.getElementById('classNum')) document.getElementById('classNum').value = state.class || '';
+            if(document.getElementById('printTeacherName')) document.getElementById('printTeacherName').innerText = state.teacherName || '';
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            document.getElementById('content-' + tab).classList.remove('hidden');
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+            document.getElementById('tab-' + tab).classList.add('tab-active');
+            if(tab === 'daily') renderDaily();
+            if(tab === 'monthly') renderMonthly();
+            if(tab === 'neis') renderNeis();
+            if(tab === 'stats') renderStats();
+            if(tab === 'data') renderData();
+        }
+
+        function getSemesterByDate(dateStr) {
+            const m = new Date(dateStr).getMonth() + 1;
+            if (state.semMonths["1"].includes(m)) return 1;
+            if (state.semMonths["2"].includes(m)) return 2;
+            return 1;
+        }
+
+        function getVisiblePeriods(dateStr) {
+            const d = new Date(dateStr);
+            const dayNum = d.getDay();
+            const semester = getSemesterByDate(dateStr);
+            const semSched = state.schedule[String(semester)];
+            let lastClassCount = (dayNum >= 1 && dayNum <= 5 && semSched[String(dayNum)]) ? parseInt(semSched[String(dayNum)]) : 7;
+            const visible = ['조회'];
+            for(let i=1; i<=lastClassCount; i++) visible.push(i + '교시');
+            visible.push('종례');
+            return visible;
+        }
+
+        // 일일출결
+        function renderDaily() {
+            const dateInput = document.getElementById('selectedDate');
+            if(!dateInput.value) return;
+            const date = dateInput.value;
+            const dateObj = new Date(date);
+            const semester = getSemesterByDate(date);
+            document.getElementById('dailyTitle').innerHTML = `${dateObj.getFullYear()}년 ${dateObj.getMonth() + 1}월 ${dateObj.getDate()}일 (${DAYS_KR[dateObj.getDay()]}) <span class="text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-2">${semester}학기</span>`;
+            
+            const sidebar = document.getElementById('studentSidebar');
+            sidebar.innerHTML = state.students.sort((a,b) => parseInt(a.num) - parseInt(b.num)).map(s => {
+                const todayRecord = state.attendance.find(a => a.date === date && a.studentId === s.id);
+                const statusTag = todayRecord && todayRecord.type ? `<span class="ml-2 text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 font-bold">${todayRecord.cat}${todayRecord.type}</span>` : '';
+                return `<button onclick="selectStudentForEntry('${s.id}', '${s.name}')" class="w-full text-left px-4 py-3 border-b hover:bg-blue-50 flex items-center justify-between ${selectedStudentIdForEntry === s.id ? 'selected-student-active' : ''}"><span class="font-medium">${s.num}번 ${s.name}</span>${statusTag}</button>`;
+            }).join('');
+
+            const entriesDiv = document.getElementById('dailyEntries');
+            let dailyData = state.attendance.filter(a => a.date === date);
+            if (selectedStudentIdForEntry) dailyData = dailyData.filter(a => a.studentId === selectedStudentIdForEntry);
+            // 입력한 순서가 아니라 번호(학번)순으로 정렬
+            dailyData = dailyData.slice().sort((a, b) => {
+                const sa = state.students.find(st => st.id === a.studentId);
+                const sb = state.students.find(st => st.id === b.studentId);
+                return (sa ? parseInt(sa.num) || 0 : 0) - (sb ? parseInt(sb.num) || 0 : 0);
+            });
+
+            if(dailyData.length === 0) {
+                entriesDiv.innerHTML = `<div class="bg-white p-24 rounded-xl border-2 border-dashed text-center text-gray-400">데이터가 없습니다.</div>`;
+            } else {
+                const visiblePeriods = getVisiblePeriods(date);
+                entriesDiv.innerHTML = dailyData.map(entry => {
+                    const s = state.students.find(st => st.id === entry.studentId);
+                    const isCustomDoc = entry.doc && !DOCS.includes(entry.doc);
+                    const showDocInput = entry.doc === '직접입력' || isCustomDoc;
+                    return `
+                        <div class="bg-white p-5 rounded-xl border shadow-sm space-y-4 border-l-4 ${entry.type ? 'border-l-blue-500' : 'border-l-gray-300'}">
+                            <div class="flex justify-between items-start">
+                                <h4 class="font-bold text-lg">${s ? s.num + '번 ' + s.name : '알 수 없음'}</h4>
+                                <button onclick="deleteEntry('${entry.id}')" class="text-gray-300 hover:text-red-500"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="3" y1="6" x2="21" y2="6"/></svg></button>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><label class="text-[11px] font-bold text-gray-400 block mb-1">출결 구분</label>
+                                    <div class="flex flex-wrap gap-1">${TYPES.map(t => `<button onclick="handleTypeClick('${entry.id}','${t}')" class="px-3 py-1 text-xs border rounded font-bold ${entry.type === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600'}">${t}</button>`).join('')}</div>
+                                </div>
+                                <div><label class="text-[11px] font-bold text-gray-400 block mb-1">카테고리</label>
+                                    <div class="flex flex-wrap gap-1">${CATS.map(c => `<button onclick="updateEntry('${entry.id}','cat','${c}')" class="px-3 py-1 text-xs border rounded font-bold ${entry.cat === c ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600'}">${c}</button>`).join('')}</div>
+                                </div>
+                            </div>
+                            <div><label class="text-[11px] font-bold text-gray-400 block mb-1">교시</label>
+                                <div class="flex flex-wrap gap-1">${visiblePeriods.map(p => `<button onclick="handlePeriodClick('${entry.id}','${p}')" class="px-2 py-1 text-[11px] border rounded ${entry.periods.includes(p) ? 'bg-blue-100 border-blue-400 text-blue-700 font-bold' : 'bg-white text-gray-400'}">${p}</button>`).join('')}</div>
+                            </div>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-[11px] font-bold text-gray-400 block mb-1">상세 사유</label>
+                                    <div class="flex flex-wrap gap-1 mb-2">${REASONS.map(r => `<button onclick="updateReasonAndDoc('${entry.id}','${r}')" class="px-2 py-1 text-[11px] bg-gray-100 rounded hover:bg-gray-200 border ${entry.detail === r ? 'bg-blue-50 text-blue-700 font-bold border-blue-300' : 'border-transparent'}">${r}</button>`).join('')}</div>
+                                    <input type="text" value="${entry.detail}" onchange="updateReasonAndDoc('${entry.id}',this.value)" placeholder="사유 직접 입력" class="w-full border rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-300">
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-[11px] font-bold text-gray-400 block mb-1">확인 방법</label>
+                                        <div class="flex flex-wrap gap-1 mb-2">
+                                            ${['전화', '문자'].map(c => `<button onclick="updateEntry('${entry.id}','contact','${c}')" class="px-3 py-1 text-[11px] border rounded font-bold ${entry.contact === c ? 'bg-gray-700 text-white' : 'bg-white text-gray-600'}">${c}</button>`).join('')}
+                                        </div>
+                                        <input type="text" value="${entry.contact}" onchange="updateEntry('${entry.id}','contact',this.value)" placeholder="확인 방법 입력" class="w-full border rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-300">
+                                    </div>
+                                    <div class="flex flex-col gap-1">
+                                        <label class="text-[11px] font-bold text-gray-400 block mb-1">증빙서류</label>
+                                        <div class="relative">
+                                            ${showDocInput ? `<input type="text" value="${isCustomDoc ? entry.doc : ''}" onchange="updateEntry('${entry.id}','doc',this.value)" placeholder="서류명 입력" class="w-full border rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 mb-1 border-blue-500">` : ''}
+                                            <select onchange="updateEntry('${entry.id}','doc',this.value)" class="w-full border rounded text-xs px-2 py-2 bg-gray-50">
+                                                <option value="">서류 선택</option>
+                                                ${DOCS.map(d => `<option value="${d}" ${entry.doc === d || (d === '직접입력' && isCustomDoc) ? 'selected' : ''}>${d}</option>`).join('')}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function updateReasonAndDoc(id, reason) {
+            state.attendance = state.attendance.map(a => {
+                if(a.id === id) {
+                    let updated = { ...a, detail: reason };
+                    if (reason === '태만') updated.cat = '미인정';
+                    else if (reason === '생리' || reason === '현장체험학습') updated.cat = '출석인정';
+                    else if (['감기', '복통', '두통', '몸살'].includes(reason)) updated.cat = '질병';
+                    if(REASON_DOC_MAP[reason]) updated.doc = REASON_DOC_MAP[reason];
+                    return updated;
+                }
+                return a;
+            });
+            save(); renderDaily();
+        }
+
+        function selectStudentForEntry(sid, name) { selectedStudentIdForEntry = (selectedStudentIdForEntry === sid) ? null : sid; document.getElementById('selectionArea').className = selectedStudentIdForEntry ? '' : 'hidden'; if(selectedStudentIdForEntry) document.getElementById('selectedStudentName').innerText = name; renderDaily(); }
+        function confirmAddEntry() { if(!selectedStudentIdForEntry) return; state.attendance.push({ id: Date.now().toString()+Math.random().toString(36).substr(2,4), date: document.getElementById('selectedDate').value, studentId: selectedStudentIdForEntry, type: '', cat: '질병', detail: '', periods: [], contact: '', doc: '', submitted: false }); save(); renderDaily(); }
+        function handleTypeClick(id, type) { state.attendance = state.attendance.map(a => a.id === id ? {...a, type, periods: type === '결석' ? getVisiblePeriods(a.date) : a.periods} : a); save(); renderDaily(); }
+        function handlePeriodClick(id, p) {
+            state.attendance = state.attendance.map(a => {
+                if(a.id === id) {
+                    const visible = getVisiblePeriods(a.date);
+                    let newP = [...a.periods];
+                    if (a.type === '지각') newP = visible.slice(0, visible.indexOf(p) + 1);
+                    else if (a.type === '조퇴') newP = visible.slice(visible.indexOf(p));
+                    else newP = a.periods.includes(p) ? a.periods.filter(x => x !== p) : [...a.periods, p];
+                    return {...a, periods: newP.sort((x,y) => visible.indexOf(x) - visible.indexOf(y))};
+                }
+                return a;
+            });
+            save(); renderDaily();
+        }
+        function updateEntry(id, key, val) { state.attendance = state.attendance.map(a => a.id === id ? {...a, [key]: val} : a); save(); renderDaily(); }
+        function deleteEntry(id) { if(confirm('삭제하시겠습니까?')) { state.attendance = state.attendance.filter(a => a.id !== id); save(); renderDaily(); } }
+
+        // 월출결
+        function renderMonthly() {
+            const month = document.getElementById('currentMonth').value;
+            if(!month) return;
+            document.getElementById('reportTitle').innerText = `${month.split('-')[0]}년 ${month.split('-')[1]}월 ${state.grade || 'O'}-${state.class || 'O'} 학급 출결 현황`;
+            const tbody = document.getElementById('monthlyTableBody');
+            const filtered = state.attendance.filter(a => a.date.startsWith(month)).sort((a,b) => a.date.localeCompare(b.date));
+            const grouped = {};
+            state.students.sort((a,b) => parseInt(a.num) - parseInt(b.num)).forEach(s => {
+                const entries = filtered.filter(f => f.studentId === s.id);
+                if(entries.length > 0) grouped[s.id] = entries;
+            });
+
+            let html = '';
+            for(let sid in grouped) {
+                const s = state.students.find(x => x.id === sid);
+                grouped[sid].forEach((e, idx) => {
+                    const d = new Date(e.date);
+                    const isCustomDoc = e.doc && !DOCS.includes(e.doc);
+                    html += `
+                        <tr class="${d.getDay() === 0 || d.getDay() === 6 ? 'bg-gray-50' : ''}">
+                            ${idx === 0 ? `<td rowspan="${grouped[sid].length}" class="border border-black font-bold text-center">${s.num}</td>` : ''}
+                            ${idx === 0 ? `<td rowspan="${grouped[sid].length}" class="border border-black font-bold text-center">${s.name}</td>` : ''}
+                            <td class="border border-black text-center">${d.getMonth()+1}/${d.getDate()}</td>
+                            <td class="border border-black font-bold text-center">${e.cat}${e.type}</td>
+                            <td class="border border-black period-cell text-center leading-tight">${e.periods.join(', ')}</td>
+                            <td class="border border-black px-1 text-center">${e.detail}</td>
+                            <td class="border border-black text-center">
+                                <input type="text" value="${e.contact}" onchange="updateEntryFromMonthly('${e.id}', 'contact', this.value)" class="w-full text-center border-none bg-transparent no-print focus:ring-0">
+                                <span class="hidden print:inline">${e.contact}</span>
+                            </td>
+                            <td class="border border-black text-center">
+                                <div class="flex flex-col no-print">
+                                    ${(e.doc === '직접입력' || isCustomDoc) ? `<input type="text" value="${isCustomDoc ? e.doc : ''}" onchange="updateEntryFromMonthly('${e.id}', 'doc', this.value)" placeholder="서류명" class="w-full text-[9px] border-b border-blue-200 text-center bg-blue-50 focus:ring-0">` : ''}
+                                    <select onchange="updateEntryFromMonthly('${e.id}', 'doc', this.value)" class="w-full text-[9px] border-none bg-transparent text-center focus:ring-0 cursor-pointer">
+                                        <option value="">서류 선택</option>
+                                        ${DOCS.map(doc => `<option value="${doc}" ${e.doc === doc || (doc === '직접입력' && isCustomDoc) ? 'selected' : ''}>${doc}</option>`).join('')}
+                                    </select>
+                                </div>
+                                <span class="hidden print:inline text-[9px]">${e.doc}</span>
+                            </td>
+                            <td class="border border-black text-center"><input type="checkbox" ${e.submitted ? 'checked' : ''} onchange="toggleSubmitted('${e.id}')" class="no-print"><span class="hidden print:inline">${e.submitted ? 'O' : ''}</span></td>
+                            <td class="border border-black"></td>
+                        </tr>`;
+                });
+            }
+            tbody.innerHTML = html || `<tr><td colspan="10" class="p-10 text-center text-gray-400">기록이 없습니다.</td></tr>`;
+            updateTeacherUI();
+        }
+        function updateEntryFromMonthly(id, key, val) { state.attendance = state.attendance.map(a => a.id === id ? {...a, [key]: val} : a); save(); renderMonthly(); }
+        function toggleSubmitted(id) { state.attendance = state.attendance.map(a => a.id === id ? {...a, submitted: !a.submitted} : a); save(); renderMonthly(); }
+
+        // 나이스 복붙용 조회 방식 토글
+        function toggleNeisFilter() {
+            const type = document.getElementById('neisFilterType').value;
+            if (type === 'month') {
+                document.getElementById('neisMonthWrapper').classList.remove('hidden');
+                document.getElementById('neisDateWrapper').classList.add('hidden');
+            } else {
+                document.getElementById('neisMonthWrapper').classList.add('hidden');
+                document.getElementById('neisDateWrapper').classList.remove('hidden');
+            }
+        }
+
+        // 나이스 복붙용 날짜 +/- 이동
+        function shiftNeisDate(days) {
+            const input = document.getElementById('neisDate');
+            const base = input.value ? new Date(input.value + 'T00:00:00') : new Date();
+            base.setDate(base.getDate() + days);
+            const yyyy = base.getFullYear();
+            const mm = String(base.getMonth() + 1).padStart(2, '0');
+            const dd = String(base.getDate()).padStart(2, '0');
+            input.value = `${yyyy}-${mm}-${dd}`;
+            renderNeis();
+        }
+
+        // 나이스 복붙용 렌더링
+        function renderNeis() {
+            const filterType = document.getElementById('neisFilterType') ? document.getElementById('neisFilterType').value : 'date';
+            let filtered = [];
+            let dateTitle = "";
+
+            if (filterType === 'month') {
+                const month = document.getElementById('neisMonth').value;
+                if(!month) return;
+                filtered = state.attendance.filter(a => a.date.startsWith(month)).sort((a,b) => a.date.localeCompare(b.date));
+                dateTitle = `${month.split('-')[0]}년 ${month.split('-')[1]}월`;
+            } else {
+                const date = document.getElementById('neisDate').value;
+                if(!date) return;
+                filtered = state.attendance.filter(a => a.date === date);
+                dateTitle = `${date.split('-')[0]}년 ${date.split('-')[1]}월 ${date.split('-')[2]}일`;
+            }
+            
+            const container = document.getElementById('neisContainer');
+            
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="text-center py-10 text-gray-400 font-medium">${dateTitle}에 해당하는 출결 데이터가 없습니다.</div>`;
+                return;
+            }
+
+            const grouped = {};
+            state.students.sort((a,b) => parseInt(a.num) - parseInt(b.num)).forEach(s => {
+                const entries = filtered.filter(f => f.studentId === s.id);
+                if(entries.length > 0) grouped[s.id] = entries;
+            });
+
+            let html = '';
+            for(let sid in grouped) {
+                const s = state.students.find(x => x.id === sid);
+                const entries = grouped[sid];
+                
+                html += `<div class="mb-6">
+                            <h4 class="font-bold text-lg text-blue-800 mb-3 border-b pb-2 border-blue-100">${s.num}번 ${s.name}</h4>
+                            <div class="space-y-3">`;
+                
+                entries.forEach((e) => {
+                    const d = new Date(e.date);
+                    const dateString = `${d.getMonth() + 1}/${d.getDate()}`;
+                    const typeString = `${e.cat}${e.type}`; 
+                    
+                    let periodStr = '';
+                    if (e.periods && e.periods.length > 0) {
+                        if (e.type === '조퇴') {
+                            periodStr = `(${e.periods[0]}부터)`;
+                        } else if (e.type === '지각') {
+                            periodStr = `(${e.periods[e.periods.length - 1]}까지)`;
+                        } else if (e.type === '결과') {
+                            periodStr = `(${e.periods.join(', ')} 결과)`;
+                        } else if (e.type === '외출') {
+                            periodStr = `(${e.periods.join(', ')} 외출)`;
+                        }
+                    }
+
+                    const josa = getJosa(e.detail);
+                    const detailPart = e.detail ? `${e.detail}${josa} 인한 ` : '';
+                    
+                    let defaultText = `${detailPart}${typeString}${periodStr}/${e.contact}/${e.doc}`;
+                    
+                    if(e.type === '결석' || e.type === '외출') {
+                        defaultText = `${detailPart}${typeString}/${e.contact}/${e.doc}`; 
+                    } else if(e.type === '결과') {
+                        defaultText = `${detailPart}${typeString}(${e.periods.join(', ')} 결과)/${e.contact}/${e.doc}`;
+                    }
+
+                    defaultText = defaultText.replace(/\/\//g, '/').replace(/\/$/, '');
+
+                    const inputId = `neis-input-${e.id}`;
+                    
+                    html += `
+                        <div class="flex flex-col sm:flex-row items-center gap-3 bg-blue-50 p-3 rounded-lg border border-blue-100 shadow-sm">
+                            <div class="w-full sm:w-28 shrink-0 flex flex-row sm:flex-col justify-between sm:justify-start items-center sm:items-start">
+                                <span class="font-bold text-gray-700">${dateString}</span>
+                                <span class="text-xs text-blue-600 font-bold bg-white px-2 py-0.5 rounded border border-blue-200 mt-1">${typeString}</span>
+                            </div>
+                            <input type="text" id="${inputId}" value="${defaultText}" class="flex-1 w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-shadow">
+                            <button onclick="copyNeisText('${inputId}')" class="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded shadow-sm hover:bg-blue-700 transition font-bold text-sm shrink-0">
+                                복사
+                            </button>
+                        </div>
+                    `;
+                });
+                
+                html += `</div></div>`;
+            }
+            document.getElementById('neisContainer').innerHTML = html || '<div class="text-center py-10 text-gray-400 font-medium">데이터가 없습니다.</div>';
+        }
+
+        function copyNeisText(inputId) {
+            const inputEl = document.getElementById(inputId);
+            inputEl.select();
+            document.execCommand('copy');
+            showToast("복사되었습니다.");
+        }
+
+        // 누적관리
+        function renderStats() {
+            const sidebar = document.getElementById('statsStudentSidebar');
+            sidebar.innerHTML = state.students.sort((a,b) => parseInt(a.num) - parseInt(b.num)).map(s => {
+                const count = state.attendance.filter(a => a.studentId === s.id).length;
+                const badge = count === 0 
+                    ? `<span class="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded border border-green-100 font-bold ml-2">개근</span>`
+                    : `<span class="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 font-bold ml-2">${count}회</span>`;
+                return `<button onclick="renderStudentStats('${s.id}')" class="w-full text-left px-4 py-3 border-b hover:bg-blue-50 flex justify-between items-center ${selectedStudentIdForStats === s.id ? 'selected-student-active font-bold' : ''}"><span>${s.num}번 ${s.name}</span>${badge}</button>`;
+            }).join('');
+        }
+
+        function renderStudentStats(sid) {
+            selectedStudentIdForStats = sid;
+            renderStats();
+            const s = state.students.find(x => x.id === sid);
+            const entries = state.attendance.filter(a => a.studentId === sid).sort((a,b) => a.date.localeCompare(b.date));
+            document.getElementById('statsTitle').innerText = `${s.num}번 ${s.name} 학생 연간 누적 출결`;
+            updateStatsContent(entries);
+        }
+
+        function renderAllStats() {
+            selectedStudentIdForStats = null;
+            renderStats();
+            const entries = [...state.attendance].sort((a,b) => {
+                const s1 = state.students.find(s => s.id === a.studentId) || {num:0};
+                const s2 = state.students.find(s => s.id === b.studentId) || {num:0};
+                if(s1.num !== s2.num) return parseInt(s1.num) - parseInt(s2.num);
+                return a.date.localeCompare(b.date);
+            });
+            document.getElementById('statsTitle').innerText = `전체 학생 연간 누적 출결`;
+            updateStatsContent(entries);
+        }
+
+        function updateStatsContent(entries) {
+            const summaryDiv = document.getElementById('statsSummary');
+            const tableBody = document.getElementById('statsTableBody');
+            
+            // 통계 계산
+            const counts = {};
+            CATS.forEach(c => { TYPES.forEach(t => { counts[`${c}${t}`] = 0; }); });
+            entries.forEach(e => { if(e.type && e.cat) counts[`${e.cat}${e.type}`] = (counts[`${e.cat}${e.type}`] || 0) + 1; });
+
+            summaryDiv.innerHTML = Object.entries(counts).filter(([_, v]) => v > 0).map(([k, v]) => `
+                <div class="bg-gray-50 p-3 rounded-lg border text-center">
+                    <div class="text-xs text-gray-500 font-bold">${k}</div>
+                    <div class="text-xl font-black text-blue-600">${v}<span class="text-xs text-gray-400 ml-1">회</span></div>
+                </div>
+            `).join('');
+
+            if(Object.entries(counts).filter(([_,v])=>v>0).length === 0) {
+                summaryDiv.innerHTML = `<div class="col-span-4 text-center py-4 text-gray-400 text-sm italic">누적된 출결 정보가 없습니다.</div>`;
+            }
+
+            tableBody.innerHTML = entries.map(e => {
+                const s = state.students.find(st => st.id === e.studentId);
+                return `
+                    <tr class="border-b hover:bg-gray-50 transition">
+                        <td class="px-4 py-3 text-center">${s ? s.num : '-'}</td>
+                        <td class="px-4 py-3 text-center font-bold">${s ? s.name : '-'}</td>
+                        <td class="px-4 py-3 text-center">${e.date}</td>
+                        <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700">${e.cat}${e.type}</span></td>
+                        <td class="px-4 py-3 text-gray-600 text-center">${e.detail}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            if(entries.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="5" class="py-20 text-center text-gray-400">데이터가 없습니다.</td></tr>`;
+            }
+        }
+
+        // 시간표 및 월 설정
+        function toggleSemester(sem) { currentEditingSemester = sem; renderData(); }
+        function toggleSemesterMonth(m) {
+            const cur = String(currentEditingSemester), oth = (cur === "1" ? "2" : "1");
+            state.semMonths[cur] = state.semMonths[cur].includes(m) ? state.semMonths[cur].filter(x => x !== m) : [...state.semMonths[cur], m];
+            state.semMonths[oth] = state.semMonths[oth].filter(x => x !== m);
+            save(); renderData();
+        }
+        function renderData() {
+            document.querySelectorAll('[id^="semBtn-"]').forEach(b => b.className = (parseInt(b.id.split('-')[1]) === currentEditingSemester ? "flex-1 py-2 rounded-md font-bold text-sm transition bg-white text-blue-600 shadow-sm" : "flex-1 py-2 rounded-md font-bold text-sm transition text-gray-500"));
+            const curKey = String(currentEditingSemester);
+            document.getElementById('semesterMonths').innerHTML = Array.from({length:12}, (_, i) => i + 1).map(m => `<button onclick="toggleSemesterMonth(${m})" class="w-9 h-9 rounded-full text-xs font-bold border ${state.semMonths[curKey].includes(m) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-400 border-gray-200'}">${m}월</button>`).join('');
+            const days = ['월', '화', '수', '목', '금'];
+            document.getElementById('scheduleSettings').innerHTML = days.map((day, idx) => {
+                const dKey = String(idx + 1), val = state.schedule[curKey][dKey] || 7;
+                return `<div class="flex items-center justify-between border-b py-2"><span class="font-bold text-gray-700">${day}요일</span><select onchange="updateScheduleState('${dKey}', this.value)" class="border rounded px-2 py-1 text-sm bg-white">${[4,5,6,7,8,9,10].map(v => `<option value="${v}" ${val == v ? 'selected' : ''}>${v}교시</option>`).join('')}</select></div>`;
+            }).join('');
+            document.getElementById('studentListContainer').innerHTML = state.students.sort((a,b) => parseInt(a.num) - parseInt(b.num)).map(s => `<div class="flex gap-2 items-center bg-white p-3 rounded-lg border"><input type="text" value="${s.num}" onchange="editStudent('${s.id}','num',this.value)" class="w-10 border rounded text-center text-xs py-1 font-bold"><input type="text" value="${s.name}" onchange="editStudent('${s.id}','name',this.value)" class="flex-1 border rounded px-2 text-xs py-1 font-bold"><button onclick="removeStudent('${s.id}')" class="text-red-300 hover:text-red-500"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M6 18L18 6M6 6l12 12"/></svg></button></div>`).join('');
+        }
+        function updateScheduleState(day, val) { state.schedule[String(currentEditingSemester)][day] = parseInt(val); save(); }
+        function addStudent() { state.students.push({ id: Date.now().toString(), num: (state.students.length + 1).toString(), name: '이름' }); save(); renderData(); }
+        function editStudent(id, key, val) { state.students = state.students.map(s => s.id === id ? {...s, [key]: val} : s); save(); }
+        function removeStudent(id) { if(confirm('삭제하시겠습니까?')) { state.students = state.students.filter(s => s.id !== id); save(); renderData(); } }
+        function backupData() { const blob = new Blob([JSON.stringify(state)], {type: 'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `출결백업_${getLocalDateStr()}.json`; a.click(); }
+        function restoreData(input) { if(!input.files[0]) return; const reader = new FileReader(); reader.onload = (e) => { state = JSON.parse(e.target.result); save(); location.reload(); }; reader.readAsText(input.files[0]); }
+        function resetData() { if(confirm('모든 데이터가 초기화됩니다. 계속하시겠습니까?')) { localStorage.clear(); location.reload(); } }
+
+        document.getElementById('excelInput').onchange = function(e) {
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const workbook = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+                const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+                if(json.length > 1) {
+                    const firstDataRow = json[1];
+                    const grade = String(firstDataRow[0] || '').replace(/[^0-9]/g, '');
+                    const classNum = String(firstDataRow[1] || '').replace(/[^0-9]/g, '');
+                    if(grade) state.grade = grade;
+                    if(classNum) state.class = classNum;
+                    const newStudents = json.slice(1).map(row => ({ id: Math.random().toString(36).substr(2, 9), num: String(row[2] || ''), name: String(row[3] || '') })).filter(s => s.name && s.name !== 'undefined' && s.name !== '성명');
+                    state.students = [...state.students, ...newStudents];
+                    save(); showToast('명렬표 정보가 업데이트되었습니다.'); renderData(); updateTeacherUI();
+                }
+            };
+            reader.readAsArrayBuffer(e.target.files[0]);
+        };
+
+        window.onload = () => {
+            const now = new Date();
+            const dateStr = getLocalDateStr(now);
+            const monthStr = getLocalMonthStr(now);
+
+            document.getElementById('selectedDate').value = dateStr;
+            document.getElementById('currentMonth').value = monthStr;
+            
+            const neisMonthEl = document.getElementById('neisMonth');
+            if(neisMonthEl) neisMonthEl.value = monthStr;
+            
+            const neisDateEl = document.getElementById('neisDate');
+            if(neisDateEl) neisDateEl.value = dateStr;
+
+            updateTeacherUI();
+            switchTab('daily');
+            initSync();
+        };
+    </script>
+</body>
+</html>
