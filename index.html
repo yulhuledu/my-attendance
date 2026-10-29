@@ -169,9 +169,15 @@
                 <select id="neisFilterType" onchange="toggleNeisFilter(); renderNeis()" class="border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm">
                     <option value="date" selected>일별 조회</option>
                     <option value="month">월별 조회</option>
+                    <option value="range">기간별 조회</option>
                 </select>
                 <div id="neisMonthWrapper" class="hidden">
                     <input type="month" id="neisMonth" onchange="renderNeis()" class="border rounded-lg px-3 py-2">
+                </div>
+                <div id="neisRangeWrapper" class="flex items-center gap-2 hidden">
+                    <input type="date" id="neisStart" onchange="renderNeis()" class="border rounded-lg px-3 py-2" aria-label="시작일">
+                    <span class="text-gray-500 font-bold">~</span>
+                    <input type="date" id="neisEnd" onchange="renderNeis()" class="border rounded-lg px-3 py-2" aria-label="종료일">
                 </div>
                 <div id="neisDateWrapper" class="flex items-center gap-1">
                     <button type="button" onclick="shiftNeisDate(-1)" class="border rounded-lg w-9 h-9 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-100 transition" aria-label="하루 전">−</button>
@@ -794,13 +800,12 @@
         // 나이스 복붙용 조회 방식 토글
         function toggleNeisFilter() {
             const type = document.getElementById('neisFilterType').value;
-            if (type === 'month') {
-                document.getElementById('neisMonthWrapper').classList.remove('hidden');
-                document.getElementById('neisDateWrapper').classList.add('hidden');
-            } else {
-                document.getElementById('neisMonthWrapper').classList.add('hidden');
-                document.getElementById('neisDateWrapper').classList.remove('hidden');
-            }
+            const monthW = document.getElementById('neisMonthWrapper');
+            const dateW = document.getElementById('neisDateWrapper');
+            const rangeW = document.getElementById('neisRangeWrapper');
+            monthW.classList.toggle('hidden', type !== 'month');
+            dateW.classList.toggle('hidden', type !== 'date');
+            if (rangeW) rangeW.classList.toggle('hidden', type !== 'range');
         }
 
         // 나이스 복붙용 날짜 +/- 이동
@@ -818,6 +823,7 @@
         // 나이스 복붙용 렌더링
         function renderNeis() {
             const filterType = document.getElementById('neisFilterType') ? document.getElementById('neisFilterType').value : 'date';
+            if (filterType === 'range') { renderNeisRange(); return; }
             let filtered = [];
             let dateTitle = "";
 
@@ -905,6 +911,86 @@
                 html += `</div></div>`;
             }
             document.getElementById('neisContainer').innerHTML = html || '<div class="text-center py-10 text-gray-400 font-medium">데이터가 없습니다.</div>';
+        }
+
+        // 나이스 복붙용 문구 생성 (기간별 조회용, 일별/월별과 동일한 형식)
+        function buildNeisText(e) {
+            const typeString = `${e.cat}${e.type}`;
+            let periodStr = '';
+            if (e.periods && e.periods.length > 0) {
+                if (e.type === '조퇴') {
+                    periodStr = `(${e.periods[0]}부터)`;
+                } else if (e.type === '지각') {
+                    periodStr = `(${e.periods[e.periods.length - 1]}까지)`;
+                } else if (e.type === '결과') {
+                    periodStr = `(${e.periods.join(', ')} 결과)`;
+                } else if (e.type === '외출') {
+                    periodStr = `(${e.periods.join(', ')} 외출)`;
+                }
+            }
+            const josa = getJosa(e.detail);
+            const detailPart = e.detail ? `${e.detail}${josa} 인한 ` : '';
+            let text = `${detailPart}${typeString}${periodStr}/${e.contact}/${e.doc}`;
+            if (e.type === '결석' || e.type === '외출') {
+                text = `${detailPart}${typeString}/${e.contact}/${e.doc}`;
+            } else if (e.type === '결과') {
+                text = `${detailPart}${typeString}(${(e.periods || []).join(', ')} 결과)/${e.contact}/${e.doc}`;
+            }
+            return text.replace(/\/\//g, '/').replace(/\/$/, '');
+        }
+
+        function neisEscapeAttr(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // 나이스 복붙용 기간별 조회: 일자별로 묶고, 같은 일자 안에서는 명렬표(번호) 순
+        function renderNeisRange() {
+            const container = document.getElementById('neisContainer');
+            const start = document.getElementById('neisStart').value;
+            const end = document.getElementById('neisEnd').value;
+            const msg = (t) => { container.innerHTML = `<div class="text-center py-10 text-gray-400 font-medium">${t}</div>`; };
+
+            if (!start || !end) { msg('시작일과 종료일을 선택해 주세요.'); return; }
+            if (start > end) { msg('시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.'); return; }
+
+            const fmt = (s) => { const p = s.split('-'); return `${p[0]}년 ${parseInt(p[1])}월 ${parseInt(p[2])}일`; };
+            const rangeTitle = `${fmt(start)} ~ ${fmt(end)}`;
+            const filtered = state.attendance.filter(a => a.date >= start && a.date <= end);
+            if (filtered.length === 0) { msg(`${rangeTitle}에 해당하는 출결 데이터가 없습니다.`); return; }
+
+            const studentOf = (id) => state.students.find(x => x.id === id);
+            const numOf = (id) => { const s = studentOf(id); return s ? parseInt(s.num) : 9999; };
+            const weekNames = ['일', '월', '화', '수', '목', '금', '토'];
+            const dates = [...new Set(filtered.map(a => a.date))].sort();
+
+            let out = `<div class="text-sm text-gray-500 font-medium">${rangeTitle} · 총 ${filtered.length}건</div>`;
+            dates.forEach(date => {
+                const dayEntries = filtered.filter(a => a.date === date).sort((a, b) => numOf(a.studentId) - numOf(b.studentId));
+                const p = date.split('-').map(Number);
+                const wd = weekNames[new Date(p[0], p[1] - 1, p[2]).getDay()];
+                out += `<div class="mb-6">
+                            <h4 class="font-bold text-lg text-blue-800 mb-3 border-b pb-2 border-blue-100">${p[1]}월 ${p[2]}일 (${wd}) <span class="text-sm text-gray-500 font-medium">${dayEntries.length}건</span></h4>
+                            <div class="space-y-3">`;
+                dayEntries.forEach(e => {
+                    const s = studentOf(e.studentId);
+                    const who = s ? `${s.num}번 ${s.name}` : '(명단 없음)';
+                    const typeString = `${e.cat}${e.type}`;
+                    const inputId = `neis-input-${e.id}`;
+                    out += `
+                        <div class="flex flex-col sm:flex-row items-center gap-3 bg-blue-50 p-3 rounded-lg border border-blue-100 shadow-sm">
+                            <div class="w-full sm:w-32 shrink-0 flex flex-row sm:flex-col justify-between sm:justify-start items-center sm:items-start">
+                                <span class="font-bold text-gray-700">${neisEscapeAttr(who)}</span>
+                                <span class="text-xs text-blue-600 font-bold bg-white px-2 py-0.5 rounded border border-blue-200 mt-1">${typeString}</span>
+                            </div>
+                            <input type="text" id="${inputId}" value="${neisEscapeAttr(buildNeisText(e))}" class="flex-1 w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-shadow">
+                            <button onclick="copyNeisText('${inputId}')" class="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded shadow-sm hover:bg-blue-700 transition font-bold text-sm shrink-0">
+                                복사
+                            </button>
+                        </div>`;
+                });
+                out += `</div></div>`;
+            });
+            container.innerHTML = out;
         }
 
         function copyNeisText(inputId) {
@@ -1045,6 +1131,12 @@
             
             const neisDateEl = document.getElementById('neisDate');
             if(neisDateEl) neisDateEl.value = dateStr;
+
+            // 기간별 조회 기본값: 이번 달 1일 ~ 오늘
+            const neisStartEl = document.getElementById('neisStart');
+            if(neisStartEl) neisStartEl.value = monthStr + '-01';
+            const neisEndEl = document.getElementById('neisEnd');
+            if(neisEndEl) neisEndEl.value = dateStr;
 
             updateTeacherUI();
             switchTab('daily');
