@@ -364,6 +364,29 @@
             '몸살': '진료확인서'
         };
 
+        // 사유 버튼이 정하는 카테고리
+        const REASON_CAT_MAP = {
+            '태만': '미인정',
+            '생리': '출석인정',
+            '현장체험학습': '출석인정',
+            '감기': '질병',
+            '복통': '질병',
+            '두통': '질병',
+            '몸살': '질병'
+        };
+        // 카테고리별 기본 증빙서류 (기타는 기본 서류 없음)
+        const CAT_DOC_MAP = {
+            '질병': '진료확인서',
+            '미인정': '미인정 서류 없음',
+            '출석인정': '학부모확인서'
+        };
+        // 카테고리가 바뀔 때 적용할 기본 서류: 현재 사유가 그 카테고리에 속하면 사유별 서류, 아니면 카테고리 기본 서류
+        function defaultDocFor(cat, detail) {
+            if (detail && REASON_CAT_MAP[detail] === cat && REASON_DOC_MAP[detail]) return REASON_DOC_MAP[detail];
+            if (detail && detail.includes('체험학습') && cat === '출석인정') return REASON_DOC_MAP['현장체험학습'];
+            return CAT_DOC_MAP[cat] || '';
+        }
+
         // 조사 판별 함수 ('로'/'으로')
         function getJosa(word) {
             if (!word) return '로';
@@ -743,8 +766,10 @@
                     if(REASON_DOC_MAP[reason]) updated.doc = REASON_DOC_MAP[reason];
                     // 질병 카테고리인데 사유가 직접 입력(목록에 없는 사유)이면 진료확인서를 기본으로 설정
                     else if (updated.cat === '질병' && !updated.doc) updated.doc = '진료확인서';
-                    // 체험학습은 확인 방법이 비어 있으면 문자를 기본으로 설정
-                    if (reason && reason.includes('체험학습') && !updated.contact) updated.contact = '문자';
+                    // 직접 입력한 사유에 '체험학습'이 들어 있으면 출석인정 + 체험학습 서류로 설정
+                    if (reason && reason.includes('체험학습') && !REASON_DOC_MAP[reason]) { updated.cat = '출석인정'; updated.doc = REASON_DOC_MAP['현장체험학습']; }
+                    // 확인 방법은 기본이 문자 (비어 있을 때만)
+                    if (!updated.contact) updated.contact = '문자';
                     return updated;
                 }
                 return a;
@@ -753,7 +778,7 @@
         }
 
         function selectStudentForEntry(sid, name) { selectedStudentIdForEntry = (selectedStudentIdForEntry === sid) ? null : sid; document.getElementById('selectionArea').className = selectedStudentIdForEntry ? '' : 'hidden'; if(selectedStudentIdForEntry) document.getElementById('selectedStudentName').innerText = name; renderDaily(); }
-        function confirmAddEntry() { if(!selectedStudentIdForEntry) return; state.attendance.push({ id: Date.now().toString()+Math.random().toString(36).substr(2,4), date: document.getElementById('selectedDate').value, studentId: selectedStudentIdForEntry, type: '', cat: '질병', detail: '', periods: [], contact: '', doc: '', submitted: false }); save(); renderDaily(); }
+        function confirmAddEntry() { if(!selectedStudentIdForEntry) return; state.attendance.push({ id: Date.now().toString()+Math.random().toString(36).substr(2,4), date: document.getElementById('selectedDate').value, studentId: selectedStudentIdForEntry, type: '', cat: '질병', detail: '', periods: [], contact: '문자', doc: CAT_DOC_MAP['질병'], submitted: false }); save(); renderDaily(); }
         function handleTypeClick(id, type) { state.attendance = state.attendance.map(a => a.id === id ? {...a, type, periods: type === '결석' ? getVisiblePeriods(a.date) : a.periods} : a); save(); renderDaily(); }
         function handlePeriodClick(id, p) {
             state.attendance = state.attendance.map(a => {
@@ -773,8 +798,12 @@
             state.attendance = state.attendance.map(a => {
                 if (a.id !== id) return a;
                 const updated = {...a, [key]: val};
-                // 질병 카테고리를 선택하면 증빙서류가 비어 있을 때 진료확인서를 기본으로 설정 (확인 방법 전화/문자와 무관)
-                if (key === 'cat' && val === '질병' && !updated.doc) updated.doc = '진료확인서';
+                if (key === 'cat') {
+                    // 카테고리가 실제로 바뀌면 그 카테고리의 기본 증빙서류로 함께 변경
+                    if (val !== a.cat) updated.doc = defaultDocFor(val, a.detail);
+                    // 같은 카테고리를 다시 눌렀을 때는 서류가 비어 있을 때만 기본값 설정
+                    else if (!updated.doc) updated.doc = defaultDocFor(val, a.detail);
+                }
                 return updated;
             });
             save(); renderDaily();
