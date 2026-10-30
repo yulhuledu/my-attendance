@@ -77,6 +77,7 @@
                             <button type="button" onclick="shiftDailyDate(-1)" class="border rounded-lg w-10 h-10 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-100 transition" aria-label="하루 전">−</button>
                             <input type="date" id="selectedDate" onchange="renderDaily()" class="border rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-medium">
                             <button type="button" onclick="shiftDailyDate(1)" class="border rounded-lg w-10 h-10 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-100 transition" aria-label="하루 후">+</button>
+                            <button type="button" onclick="goDailyToday()" class="border rounded-lg h-10 px-3 ml-1 flex items-center justify-center text-sm font-bold text-blue-700 hover:bg-blue-50 transition" aria-label="오늘로 이동">오늘</button>
                         </div>
                     </div>
                     <h2 id="dailyTitle" class="text-xl font-black text-blue-800"></h2>
@@ -640,6 +641,12 @@
             const mm = String(base.getMonth() + 1).padStart(2, '0');
             const dd = String(base.getDate()).padStart(2, '0');
             input.value = `${yyyy}-${mm}-${dd}`;
+            renderDaily();
+        }
+
+        // 일일출결 오늘 날짜로 이동
+        function goDailyToday() {
+            document.getElementById('selectedDate').value = getLocalDateStr(new Date());
             renderDaily();
         }
 
