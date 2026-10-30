@@ -741,6 +741,10 @@
                     else if (reason === '생리' || reason === '현장체험학습') updated.cat = '출석인정';
                     else if (['감기', '복통', '두통', '몸살'].includes(reason)) updated.cat = '질병';
                     if(REASON_DOC_MAP[reason]) updated.doc = REASON_DOC_MAP[reason];
+                    // 질병 카테고리인데 사유가 직접 입력(목록에 없는 사유)이면 진료확인서를 기본으로 설정
+                    else if (updated.cat === '질병' && !updated.doc) updated.doc = '진료확인서';
+                    // 체험학습은 확인 방법이 비어 있으면 문자를 기본으로 설정
+                    if (reason && reason.includes('체험학습') && !updated.contact) updated.contact = '문자';
                     return updated;
                 }
                 return a;
@@ -765,7 +769,16 @@
             });
             save(); renderDaily();
         }
-        function updateEntry(id, key, val) { state.attendance = state.attendance.map(a => a.id === id ? {...a, [key]: val} : a); save(); renderDaily(); }
+        function updateEntry(id, key, val) {
+            state.attendance = state.attendance.map(a => {
+                if (a.id !== id) return a;
+                const updated = {...a, [key]: val};
+                // 질병 카테고리를 선택하면 증빙서류가 비어 있을 때 진료확인서를 기본으로 설정 (확인 방법 전화/문자와 무관)
+                if (key === 'cat' && val === '질병' && !updated.doc) updated.doc = '진료확인서';
+                return updated;
+            });
+            save(); renderDaily();
+        }
         function deleteEntry(id) { if(confirm('삭제하시겠습니까?')) { state.attendance = state.attendance.filter(a => a.id !== id); save(); renderDaily(); } }
 
         // 월출결
