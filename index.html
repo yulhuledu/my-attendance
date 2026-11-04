@@ -779,7 +779,16 @@
 
         function selectStudentForEntry(sid, name) { selectedStudentIdForEntry = (selectedStudentIdForEntry === sid) ? null : sid; document.getElementById('selectionArea').className = selectedStudentIdForEntry ? '' : 'hidden'; if(selectedStudentIdForEntry) document.getElementById('selectedStudentName').innerText = name; renderDaily(); }
         function confirmAddEntry() { if(!selectedStudentIdForEntry) return; state.attendance.push({ id: Date.now().toString()+Math.random().toString(36).substr(2,4), date: document.getElementById('selectedDate').value, studentId: selectedStudentIdForEntry, type: '', cat: '질병', detail: '', periods: [], contact: '문자', doc: CAT_DOC_MAP['질병'], submitted: false }); save(); renderDaily(); }
-        function handleTypeClick(id, type) { state.attendance = state.attendance.map(a => a.id === id ? {...a, type, periods: type === '결석' ? getVisiblePeriods(a.date) : a.periods} : a); save(); renderDaily(); }
+        function handleTypeClick(id, type) {
+            state.attendance = state.attendance.map(a => {
+                if (a.id !== id) return a;
+                const updated = {...a, type, periods: type === '결석' ? getVisiblePeriods(a.date) : a.periods};
+                // 조퇴를 새로 선택하면 확인 방법을 전화로 기본 설정 (이미 조퇴인 기록은 그대로 둠)
+                if (type === '조퇴' && a.type !== '조퇴') updated.contact = '전화';
+                return updated;
+            });
+            save(); renderDaily();
+        }
         function handlePeriodClick(id, p) {
             state.attendance = state.attendance.map(a => {
                 if(a.id === id) {
