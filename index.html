@@ -152,11 +152,12 @@
                             <th class="border border-black p-1 w-[8%]">성명</th>
                             <th class="border border-black p-1 w-[7%]">날짜</th>
                             <th class="border border-black p-1 w-[10%]">출결구분</th>
-                            <th class="border border-black p-1 w-[32%]">교시</th>
+                            <th class="border border-black p-1 w-[27%] print:w-[32%]">교시</th>
                             <th class="border border-black p-1 w-[12%]">상세 사유</th>
                             <th class="border border-black p-1 w-[7%]">방법</th>
                             <th class="border border-black p-1 w-[11%]">증빙서류</th>
                             <th class="border border-black p-1 w-[4%]">제출</th>
+                            <th class="border border-black p-1 w-[5%] no-print">나이스<br>입력</th>
                             <th class="border border-black p-1 w-[5%]">확인</th>
                         </tr>
                     </thead>
@@ -861,14 +862,16 @@
                                 <span class="hidden print:inline text-[9px]">${e.doc}</span>
                             </td>
                             <td class="border border-black text-center"><input type="checkbox" ${e.submitted ? 'checked' : ''} onchange="toggleSubmitted('${e.id}')" class="no-print"><span class="hidden print:inline">${e.submitted ? 'O' : ''}</span></td>
+                            <td class="border border-black text-center no-print"><input type="checkbox" ${e.neis ? 'checked' : ''} onchange="toggleNeis('${e.id}')" aria-label="나이스 입력 완료"></td>
                             <td class="border border-black"></td>
                         </tr>`;
                 });
             }
-            tbody.innerHTML = html || `<tr><td colspan="10" class="p-10 text-center text-gray-400">기록이 없습니다.</td></tr>`;
+            tbody.innerHTML = html || `<tr><td colspan="11" class="p-10 text-center text-gray-400">기록이 없습니다.</td></tr>`;
             updateTeacherUI();
         }
         function updateEntryFromMonthly(id, key, val) { state.attendance = state.attendance.map(a => a.id === id ? {...a, [key]: val} : a); save(); renderMonthly(); }
+        function toggleNeis(id) { state.attendance = state.attendance.map(a => a.id === id ? {...a, neis: !a.neis} : a); save(); renderMonthly(); }
         function toggleSubmitted(id) { state.attendance = state.attendance.map(a => a.id === id ? {...a, submitted: !a.submitted} : a); save(); renderMonthly(); }
 
         // 나이스 복붙용 조회 방식 토글
