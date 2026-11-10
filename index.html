@@ -173,19 +173,19 @@
             <div class="flex items-center gap-4">
                 <label class="font-bold text-gray-700">조회 방식:</label>
                 <select id="neisFilterType" onchange="toggleNeisFilter(); renderNeis()" class="border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm">
-                    <option value="date" selected>일별 조회</option>
+                    <option value="date">일별 조회</option>
                     <option value="month">월별 조회</option>
-                    <option value="range">기간별 조회</option>
+                    <option value="range" selected>기간별 조회</option>
                 </select>
                 <div id="neisMonthWrapper" class="hidden">
                     <input type="month" id="neisMonth" onchange="renderNeis()" class="border rounded-lg px-3 py-2">
                 </div>
-                <div id="neisRangeWrapper" class="flex items-center gap-2 hidden">
+                <div id="neisRangeWrapper" class="flex items-center gap-2">
                     <input type="date" id="neisStart" onchange="renderNeis()" class="border rounded-lg px-3 py-2" aria-label="시작일">
                     <span class="text-gray-500 font-bold">~</span>
                     <input type="date" id="neisEnd" onchange="renderNeis()" class="border rounded-lg px-3 py-2" aria-label="종료일">
                 </div>
-                <div id="neisDateWrapper" class="flex items-center gap-1">
+                <div id="neisDateWrapper" class="flex items-center gap-1 hidden">
                     <button type="button" onclick="shiftNeisDate(-1)" class="border rounded-lg w-9 h-9 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-100 transition" aria-label="하루 전">−</button>
                     <input type="date" id="neisDate" onchange="renderNeis()" class="border rounded-lg px-3 py-2">
                     <button type="button" onclick="shiftNeisDate(1)" class="border rounded-lg w-9 h-9 flex items-center justify-center text-lg font-bold text-gray-600 hover:bg-gray-100 transition" aria-label="하루 후">+</button>
@@ -1209,11 +1209,14 @@
             const neisDateEl = document.getElementById('neisDate');
             if(neisDateEl) neisDateEl.value = dateStr;
 
-            // 기간별 조회 기본값: 이번 달 1일 ~ 오늘
+            // 나이스복붙용 기본 조회: 기간별 조회, 기간은 이번 달 1일 ~ 말일 (날짜를 직접 고르면 그 기간만 표시)
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
             const neisStartEl = document.getElementById('neisStart');
             if(neisStartEl) neisStartEl.value = monthStr + '-01';
             const neisEndEl = document.getElementById('neisEnd');
-            if(neisEndEl) neisEndEl.value = dateStr;
+            if(neisEndEl) neisEndEl.value = monthStr + '-' + String(lastDay).padStart(2, '0');
+            const neisTypeEl = document.getElementById('neisFilterType');
+            if(neisTypeEl) { neisTypeEl.value = 'range'; toggleNeisFilter(); }
 
             updateTeacherUI();
             switchTab('daily');
