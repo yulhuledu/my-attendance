@@ -1038,7 +1038,8 @@
             const studentOf = (id) => state.students.find(x => x.id === id);
             const numOf = (id) => { const s = studentOf(id); return s ? parseInt(s.num) : 9999; };
             const weekNames = ['일', '월', '화', '수', '목', '금', '토'];
-            const dates = [...new Set(filtered.map(a => a.date))].sort();
+            // 최신 날짜가 위로 오도록 내림차순 정렬 (같은 날짜 안에서는 번호순 유지)
+            const dates = [...new Set(filtered.map(a => a.date))].sort().reverse();
 
             let out = `<div class="text-sm text-gray-500 font-medium">${rangeTitle} · 총 ${filtered.length}건</div>`;
             dates.forEach(date => {
